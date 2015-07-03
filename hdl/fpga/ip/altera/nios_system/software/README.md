@@ -34,6 +34,8 @@ Magic Byte   | Packet format
 ------------ | -------------
 0x00         | LMS6002D register access
 0x01         | SI5338 register access
+0xa0         | TX synchronization trigger
+0xa1         | RX synchronization trigger
 0x80-0xff    | Reserved for user customization
 
 
