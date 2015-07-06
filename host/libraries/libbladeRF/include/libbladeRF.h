@@ -3231,6 +3231,59 @@ API_EXPORT
 int CALL_CONV bladerf_calibrate_dc(struct bladerf *dev,
                                    bladerf_cal_module module);
 
+/**
+ * TX and RX trigger ctl selection
+ */
+typedef enum
+{
+    BLADERF_TRIGGER_RX,  /* Receive Trigger */
+    BLADERF_TRIGGER_TX   /* Transmit Trigger */
+} bladerf_trigger;
+
+/*
+ * Bit definitions for trigger control register
+ */
+#define BLADERF_TRIGGER_ARM_BIT     ((uint8_t) (1 << 0))
+#define BLADERF_TRIGGER_FIRE_BIT    ((uint8_t) (1 << 1))
+#define BLADERF_TRIGGER_MASTER_BIT  ((uint8_t) (1 << 2))
+#define BLADERF_TRIGGER_LINE_BIT    ((uint8_t) (1 << 3))
+
+/**
+ * Display to dependent modules that triggering is supported
+ */
+#define BLADERF_FEATURE_TRIGGER 1
+
+/**
+ * Read trigger control register
+ *
+ * @param   dev         Device handle
+ * @param   trigger     Select rx or tx trigger
+ * @param   val         Pointer to variable that register is read into
+ *                      See the BLADERF_TRIGGER_* macros for the meaning
+ *                      of each bit.
+ *
+ * @return 0 on success, value from \ref RETCODES list on failure
+ */
+API_EXPORT
+int CALL_CONV bladerf_read_trigger(struct bladerf *dev,
+                                   bladerf_trigger trigger,
+                                   uint8_t *val);
+
+/**
+ * Write trigger control register
+ *
+ * @param   dev         Device handle
+ * @param   trigger     Select rx (RX_TRIG) or tx (TX_TRIG) trigger
+ * @param   val         Data to write into the trigger control register.
+ *                      See the BLADERF_TRIGGER_* macros for options.
+ *
+ * @return 0 on success, value from \ref RETCODES list on failure
+ */
+API_EXPORT
+int CALL_CONV bladerf_write_trigger(struct bladerf *dev,
+                                    bladerf_trigger trigger,
+                                    uint8_t val);
+
 /** @} (End of LOW_LEVEL) */
 
 /**
