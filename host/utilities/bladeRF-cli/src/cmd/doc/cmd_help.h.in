@@ -33,7 +33,7 @@
 #ifndef BLADERF_CLI_DOC_CMD_HELP_H__
 #define BLADERF_CLI_DOC_CMD_HELP_H__
 
-
+#define CLI_CMD_HELPTEXT_trigger "TODO trigger Help"
 
 #define CLI_CMD_HELPTEXT_calibrate \
   "Usage: calibrate <operation> [options]\n" \
