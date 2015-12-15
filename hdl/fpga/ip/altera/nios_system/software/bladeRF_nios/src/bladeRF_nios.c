@@ -88,6 +88,28 @@ static const struct pkt_handler pkt_handlers[] = {
     PKT_LEGACY,
 };
 
+/* A structure that represents a point on a line. Used for calibrating
+ * the VCTCXO */
+typedef struct point {
+    int32_t  x; // Error counts
+    uint16_t y; // DAC count
+} point_t;
+
+typedef struct line {
+    point_t  point[2];
+    int32_t  slope;
+    uint16_t y_intercept; // in DAC counts
+} line_t;
+
+/* State machine for VCTCXO tuning */
+typedef enum state {
+    COARSE_TUNE_MIN,
+    COARSE_TUNE_MAX,
+    COARSE_TUNE_DONE,
+    FINE_TUNE,
+    DO_NOTHING
+} state_t;
+
 int main(void)
 {
     uint8_t i;
@@ -96,6 +118,7 @@ int main(void)
     const struct pkt_handler *handler;
 
     struct pkt_buf pkt;
+    struct vctcxo_tamer_pkt_buf vctcxo_tamer_pkt;
 
     /* Marked volatile to ensure we actually read the byte populated by
      * the UART ISR */
@@ -103,12 +126,30 @@ int main(void)
 
     volatile bool have_request = false;
 
+    // Trim DAC constants
+    const uint16_t trimdac_min       = 0x28F5;
+    const uint16_t trimdac_max       = 0xF5C3;
+
+    // Trim DAC calibration line
+    line_t trimdac_cal_line;
+
+    // VCTCXO Tune State machine
+    state_t tune_state = COARSE_TUNE_MIN;
+
+    // Set the known/default values of the trim DAC cal line
+    trimdac_cal_line.point[0].x  = 0;
+    trimdac_cal_line.point[0].y  = trimdac_min;
+    trimdac_cal_line.point[1].x  = 0;
+    trimdac_cal_line.point[1].y  = trimdac_max;
+    trimdac_cal_line.slope       = 0;
+    trimdac_cal_line.y_intercept = 0;
+
     /* Sanity check */
     ASSERT(PKT_MAGIC_IDX == 0);
 
     memset(&pkt, 0, sizeof(pkt));
     pkt.ready = false;
-    bladerf_nios_init(&pkt);
+    bladerf_nios_init(&pkt, &vctcxo_tamer_pkt);
 
     /* Initialize packet handlers */
     for (i = 0; i < ARRAY_SIZE(pkt_handlers); i++) {
@@ -151,6 +192,97 @@ int main(void)
             /* Write response to host */
             command_uart_write_response(pkt.resp);
         } else {
+
+            /* Temporarily putting the VCTCXO Calibration stuff here. */
+            if( vctcxo_tamer_pkt.ready ) {
+
+                vctcxo_tamer_pkt.ready = false;
+
+                switch(tune_state) {
+
+                case COARSE_TUNE_MIN:
+
+                    /* Tune to the minimum DAC value */
+                    vctcxo_trim_dac_write( 0x08, trimdac_min );
+
+                    /* State to enter upon the next interrupt */
+                    tune_state = COARSE_TUNE_MAX;
+
+                    break;
+
+                case COARSE_TUNE_MAX:
+
+                    /* We have the error from the minimum DAC setting, store it
+                     * as the 'x' coordinate for the first point */
+                    trimdac_cal_line.point[0].x = vctcxo_tamer_pkt.pps_1s_error;
+
+                    /* Tune to the maximum DAC value */
+                    vctcxo_trim_dac_write( 0x08, trimdac_max );
+
+                    /* State to enter upon the next interrupt */
+                    tune_state = COARSE_TUNE_DONE;
+
+                    break;
+
+                case COARSE_TUNE_DONE:
+
+                    /* We have the error from the maximum DAC setting, store it
+                     * as the 'x' coordinate for the second point */
+                    trimdac_cal_line.point[1].x = vctcxo_tamer_pkt.pps_1s_error;
+
+                    /* We now have two points, so we can calculate the equation
+                     * for a line plotted with DAC counts on the Y axis and
+                     * error on the X axis. We want a PPM of zero, which ideally
+                     * corresponds to the y-intercept of the line. */
+                    trimdac_cal_line.slope = ( (trimdac_cal_line.point[1].y - trimdac_cal_line.point[0].y) /
+                                               (trimdac_cal_line.point[1].x - trimdac_cal_line.point[0].x) );
+                    trimdac_cal_line.y_intercept = ( trimdac_cal_line.point[0].y -
+                                                     (trimdac_cal_line.slope * trimdac_cal_line.point[0].x) );
+
+                    /* Set the trim DAC count to the y-intercept */
+                    vctcxo_trim_dac_write( 0x08, trimdac_cal_line.y_intercept );
+
+                    /* State to enter upon the next interrupt */
+                    tune_state = FINE_TUNE;
+
+                    break;
+
+                case FINE_TUNE:
+
+                    /* We should be extremely close to a perfectly tuned
+                     * VCTCXO, but some minor adjustments need to be made */
+
+                    /* Check the magnitude of the errors starting with the
+                     * one second count. If an error is greater than the maxium
+                     * tolerated error, adjust the trim DAC by the error (Hz)
+                     * multiplied by the slope (in counts/Hz) and scale the
+                     * result by the precision interval (e.g. 1s, 10s, 100s). */
+                    if( vctcxo_tamer_pkt.pps_1s_error_flag ) {
+                        vctcxo_trim_dac_write( 0x08, (vctcxo_trim_dac_value -
+                            ((vctcxo_tamer_pkt.pps_1s_error * trimdac_cal_line.slope)/1)) );
+                    } else if( vctcxo_tamer_pkt.pps_10s_error_flag ) {
+                        vctcxo_trim_dac_write( 0x08, (vctcxo_trim_dac_value -
+                            ((vctcxo_tamer_pkt.pps_10s_error * trimdac_cal_line.slope)/10)) );
+                    } else if( vctcxo_tamer_pkt.pps_100s_error_flag ) {
+                        vctcxo_trim_dac_write( 0x08, (vctcxo_trim_dac_value -
+                            ((vctcxo_tamer_pkt.pps_100s_error * trimdac_cal_line.slope)/100)) );
+                    }
+
+                    break;
+
+                default:
+                    break;
+
+                } /* switch */
+
+                /* Take PPS counters out of reset */
+                vctcxo_tamer_reset_counters( false );
+
+                /* Enable interrupts */
+                vctcxo_tamer_enable_isr( true );
+
+            } /* VCTCXO Tamer interrupt */
+
             for (i = 0; i < ARRAY_SIZE(pkt_handlers); i++) {
                 if (pkt_handlers[i].do_work != NULL) {
                     pkt_handlers[i].do_work();

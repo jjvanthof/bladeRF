@@ -81,18 +81,44 @@
 /* LMS6002D SPI interface */
 #define LMS6002D_WRITE_BIT  (1 << 7)
 
+/* VCTCXO tamer register offsets */
+#   define VT_CTRL_ADDR      (0x00)
+#   define VT_STAT_ADDR      (0x01)
+#   define VT_ERR_1S_ADDR    (0x04)
+#   define VT_ERR_10S_ADDR   (0x0C)
+#   define VT_ERR_100S_ADDR  (0x14)
+
+/* VCTCXO tamer control/status bits */
+#   define VT_CTRL_RESET     (0x01)
+#   define VT_CTRL_IRQ_EN    (1<<4)
+#   define VT_CTRL_IRQ_CLR   (1<<5)
+#   define VT_CTRL_TUNE_MODE (0xC0)
+
+#   define VT_STAT_ERR_1S    (0x01)
+#   define VT_STAT_ERR_10S   (1<<1)
+#   define VT_STAT_ERR_100S  (1<<2)
 
 #else
 #   define INLINE
     void SIMULATION_FLUSH_UART();
 #endif
 
+/* Define a global variable containing the current VCTCXO DAC setting.
+ * This is a 'cached' value of what is written to the DAC and is used
+ * for the calibration algorithm to avoid unnecessary read requests
+ * going out to the DAC.
+ */
+extern uint16_t vctcxo_trim_dac_value;
+
+/* Define a cached version of the VCTCXO tamer control register */
+extern uint8_t vctcxo_tamer_ctrl_reg;
+
 /**
  * Initialize NIOS II device interfaces.
  *
  * This should be called prior to any other device access function.
  */
-void bladerf_nios_init(struct pkt_buf *pkt);
+void bladerf_nios_init(struct pkt_buf *pkt, struct vctcxo_tamer_pkt_buf *vctcxo_tamer_pkt);
 
 /**
  * Read from an LMS6002D register
@@ -273,6 +299,65 @@ INLINE void command_uart_read_request(uint8_t *command);
  * Write the command UART response buffer
  */
 INLINE void command_uart_write_response(uint8_t *command);
+
+/**
+ * Enable interrupts from the VCTCXO Tamer module
+ *
+ * @param   enable  true or false
+ */
+void vctcxo_tamer_enable_isr(bool enable);
+
+/**
+ * Clear interrupts from the VCTCXO Tamer module
+ */
+void vctcxo_tamer_clear_isr();
+
+/**
+ * Reset the counters in the VCTCXO Tamer module. Setting is sticky,
+ * so counters must be explicitly taken out of reset.
+ *
+ * @param   reset   true or false
+ */
+void vctcxo_tamer_reset_counters( bool reset );
+
+/**
+ * Sets the VCTCXO Tamer mode
+ *
+ * @param mode      One of the BLADERF_VCTCXO_TAMER_* values.
+ *
+ */
+void vctcxo_tamer_set_tune_mode(bladerf_vctcxo_tamer_mode mode);
+
+/**
+ * Gets the current VCTCXO Tamer mode
+ *
+ * @return Current mode or BLADERF_VCTCXO_TAMER_MODE_INVALID on failure.
+ */
+bladerf_vctcxo_tamer_mode vctcxo_tamer_get_tune_mode();
+
+/**
+ * Read VCTCXO tamer count error registers
+ *
+ * @param   addr    Address of byte 0 of error count register
+ * @return  VCTCXO  count error
+ */
+int32_t vctcxo_tamer_read_count(uint8_t addr);
+
+/**
+ * Read single VCTCXO tamer register (e.g. control/status)
+ *
+ * @param   addr    Address of register to read
+ * @return  data    Register contents
+ */
+uint8_t vctcxo_tamer_read(uint8_t addr);
+
+/**
+ * Write single VCTCXO tamer register
+ *
+ * @param   addr    Address of register to write
+ * @param   data    Value to write at the specified address
+ */
+void vctcxo_tamer_write(uint8_t addr, uint8_t data);
 
 /**
  * @return FPGA version

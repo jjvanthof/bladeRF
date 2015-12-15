@@ -411,33 +411,37 @@ below. If no paremeter is specified, all parameters are printed.
 ----------------------------------------------------------------------
     Parameter Description
 ------------- --------------------------------------------------------
-`bandwidth`   Bandwidth settings
+`bandwidth`     Bandwidth settings
 
-`frequency`   Frequency settings
+`frequency`     Frequency settings
 
-`gpio`        FX3 <-> FPGA GPIO state
+`gpio`          FX3 <-> FPGA GPIO state
 
-`loopback`    Loopback settings
+`loopback`      Loopback settings
 
-`lnagain`     Gain setting of the RX LNA, in dB
+`lnagain`       Gain setting of the RX LNA, in dB
 
-`rxvga1`      Gain setting of RXVGA1, in dB
+`rx_mux`        FPGA RX FIFO input mux setting
 
-`rxvga2`      Gain setting of RXVGA2, in dB
+`rxvga1`        Gain setting of RXVGA1, in dB
 
-`txvga1`      Gain setting of TXVGA1, in dB
+`rxvga2`        Gain setting of RXVGA2, in dB
 
-`txvga2`      Gain setting of TXVGA2, in dB
+`txvga1`        Gain setting of TXVGA1, in dB
 
-`sampling`    External or internal sampling mode
+`txvga2`        Gain setting of TXVGA2, in dB
 
-`samplerate`  Samplerate settings
+`sampling`      External or internal sampling mode
 
-`trimdac`     VCTCXO Trim DAC settings
+`samplerate`    Samplerate settings
 
-`xb_gpio`     Expansion board GPIO values
+`trimdac`       VCTCXO Trim DAC settings
 
-`xb_gpio_dir` Expansion board GPIO direction (1=output, 0=input)
+`vctcxo_tamer`  Current VCTCXO tamer mode.
+
+`xb_gpio`       Expansion board GPIO values
+
+`xb_gpio_dir`   Expansion board GPIO direction (1=output, 0=input)
 ----------------------------------------------------------------------
 
 
@@ -676,33 +680,41 @@ that particular parameter. The parameter is one of:
 ----------------------------------------------------------------------
     Parameter Description
 ------------- --------------------------------------------------------
-`bandwidth`   Bandwidth settings
+`bandwidth`     Bandwidth settings
 
-`frequency`   Frequency settings
+`frequency`     Frequency settings
 
-`gpio`        FX3 <-> FPGA GPIO state
+`gpio`          FX3 <-> FPGA GPIO state
 
-`loopback`    Loopback settings. Run 'set loopback' to list modes.
+`loopback`      Loopback settings. Run 'set loopback' to list modes.
 
-`lnagain`     Gain setting of the RX LNA, in dB. Values: 0, 3, 6
+`lnagain`       Gain setting of the RX LNA, in dB. Values: 0, 3, 6
 
-`rxvga1`      Gain setting of RXVGA1, in dB. Range: [5, 30]
+`rxvga1`        Gain setting of RXVGA1, in dB. Range: [5, 30]
 
-`rxvga2`      Gain setting of RXVGA2, in dB. Range: [0, 30]
+`rx_mux`        FPGA RX FIFO input mux mode. Options are:
+                    BASEBAND_LMS, 12BIT_COUNTER, 
+                    32BIT_COUNTER, DIGITAL_LOOPBACK
 
-`txvga1`      Gain setting of TXVGA1, in dB. Range: [-35, -4]
+`rxvga1`        Gain setting of RXVGA1, in dB. Range: [5, 30]
 
-`txvga2`      Gain setting of TXVGA2, in dB. Range: [0, 25]
+`rxvga2`        Gain setting of RXVGA2, in dB. Range: [0, 30]
 
-`sampling`    External or internal sampling mode
+`txvga1`        Gain setting of TXVGA1, in dB. Range: [-35, -4]
 
-`samplerate`  Sample rate settings
+`txvga2`        Gain setting of TXVGA2, in dB. Range: [0, 25]
 
-`trimdac`     VCTCXO Trim DAC settings
+`sampling`      External or internal sampling mode
 
-`xb_gpio`     Expansion board GPIO values
+`samplerate`    Sample rate settings
 
-`xb_gpio_dir` Expansion board GPIO direction (1=output, 0=input)
+`trimdac`       VCTCXO trim DAC settings
+
+`vctcxo_tamer`  VCTCXO tamer mode. Options: Disabled, 1PPS, 10MHz
+
+`xb_gpio`       Expansion board GPIO values
+
+`xb_gpio_dir`   Expansion board GPIO direction (1=output, 0=input)
 ----------------------------------------------------------------------
 
 
