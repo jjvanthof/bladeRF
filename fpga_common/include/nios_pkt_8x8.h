@@ -100,8 +100,9 @@
 #define NIOS_PKT_8x8_IDX_RESV2      6
 
 /* Target IDs */
-#define NIOS_PKT_8x8_TARGET_LMS6    0x00    /* LMS6002D register access */
-#define NIOS_PKT_8x8_TARGET_SI5338  0x01    /* Si5338 register access */
+#define NIOS_PKT_8x8_TARGET_LMS6            0x00 /* LMS6002D register access */
+#define NIOS_PKT_8x8_TARGET_SI5338          0x01 /* Si5338 register access */
+#define NIOS_PKT_8x8_TARGET_VCTCXO_TAMER    0x02 /* VCTCXO Tamer control */
 
 /* IDs 0x80 through 0xff will not be assigned by Nuand. These are reserved
  * for user customizations */
@@ -190,6 +191,5 @@ static inline void nios_pkt_8x8_resp_unpack(const uint8_t *buf, uint8_t *target,
         *success = false;
     }
 }
-
 
 #endif

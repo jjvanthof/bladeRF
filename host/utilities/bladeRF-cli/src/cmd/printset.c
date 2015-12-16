@@ -69,6 +69,7 @@ PRINTSET_DECL(frequency)
 PRINTSET_DECL(gpio)
 PRINTSET_DECL(loopback)
 PRINTSET_DECL(lnagain)
+PRINTSET_DECL(rx_mux)
 PRINTSET_DECL(rxvga1)
 PRINTSET_DECL(rxvga2)
 PRINTSET_DECL(txvga1)
@@ -76,27 +77,30 @@ PRINTSET_DECL(txvga2)
 PRINTSET_DECL(sampling)
 PRINTSET_DECL(samplerate)
 PRINTSET_DECL(trimdac)
+PRINTSET_DECL(vctcxo_tamer)
 PRINTSET_DECL(xb_spi)
 PRINTSET_DECL(xb_gpio)
 PRINTSET_DECL(xb_gpio_dir)
 
 /* print/set parameter table */
 struct printset_entry printset_table[] = {
-    PRINTSET_ENTRY(bandwidth,   PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(frequency,   PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(gpio,        PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(loopback,    PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(lnagain,     PRINTALL_OPTION_NONE),
-    PRINTSET_ENTRY(rxvga1,      PRINTALL_OPTION_NONE),
-    PRINTSET_ENTRY(rxvga2,      PRINTALL_OPTION_NONE),
-    PRINTSET_ENTRY(txvga1,      PRINTALL_OPTION_NONE),
-    PRINTSET_ENTRY(txvga2,      PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(sampling,    PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(samplerate,  PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(trimdac,     PRINTALL_OPTION_APPEND_NEWLINE),
-    PRINTSET_ENTRY(xb_spi,      PRINTALL_OPTION_SKIP),
-    PRINTSET_ENTRY(xb_gpio,     PRINTALL_OPTION_NONE),
-    PRINTSET_ENTRY(xb_gpio_dir, PRINTALL_OPTION_NONE),
+    PRINTSET_ENTRY(bandwidth,       PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(frequency,       PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(gpio,            PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(loopback,        PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(rx_mux,          PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(lnagain,         PRINTALL_OPTION_NONE),
+    PRINTSET_ENTRY(rxvga1,          PRINTALL_OPTION_NONE),
+    PRINTSET_ENTRY(rxvga2,          PRINTALL_OPTION_NONE),
+    PRINTSET_ENTRY(txvga1,          PRINTALL_OPTION_NONE),
+    PRINTSET_ENTRY(txvga2,          PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(sampling,        PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(samplerate,      PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(trimdac,         PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(vctcxo_tamer,    PRINTALL_OPTION_APPEND_NEWLINE),
+    PRINTSET_ENTRY(xb_spi,          PRINTALL_OPTION_SKIP),
+    PRINTSET_ENTRY(xb_gpio,         PRINTALL_OPTION_NONE),
+    PRINTSET_ENTRY(xb_gpio_dir,     PRINTALL_OPTION_NONE),
 
     /* End of table marked by entry with NULL/empty fields */
     { FIELD_INIT(.print, NULL), FIELD_INIT(.set, NULL), FIELD_INIT(.name, "") }
@@ -1024,6 +1028,72 @@ int set_loopback(struct cli_state *state, int argc, char **argv)
     }
 }
 
+int print_rx_mux(struct cli_state *state, int argc, char **argv)
+{
+    int status;
+    const char *mux_str;
+    bladerf_rx_mux mux_setting;
+
+    status = bladerf_get_rx_mux(state->dev, &mux_setting);
+    if (status < 0) {
+        state->last_lib_error = status;
+        return CLI_RET_LIBBLADERF;
+    }
+
+    switch (mux_setting) {
+        case BLADERF_RX_MUX_BASEBAND_LMS:
+            mux_str = "BASEBAND_LMS - Baseband samples from LMS6002D";
+            break;
+        case BLADERF_RX_MUX_12BIT_COUNTER:
+            mux_str = "12BIT_COUNTER - 12-bit Up-Count I, Down-Count Q";
+            break;
+        case BLADERF_RX_MUX_32BIT_COUNTER:
+            mux_str = "32BIT_COUNTER - 32-bit Up-Counter";
+            break;
+        case BLADERF_RX_MUX_DIGITAL_LOOPBACK:
+            mux_str = "DIGITAL_LOOPBACK: Digital Loopback of TX->RX in the FPGA";
+            break;
+        default:
+            mux_str = "Unknown";
+    }
+
+    printf("  RX mux: %s\n", mux_str);
+    return 0;
+}
+
+int set_rx_mux(struct cli_state *state, int argc, char **argv)
+{
+    int status;
+    bladerf_rx_mux mux_val;
+
+    if (argc != 3) {
+        return CLI_RET_NARGS;
+    }
+
+    if (!strcasecmp(argv[2], "BASEBAND_LMS")) {
+        mux_val = BLADERF_RX_MUX_BASEBAND_LMS;
+    } else if (!strcasecmp(argv[2], "12BIT_COUNTER")) {
+        mux_val = BLADERF_RX_MUX_12BIT_COUNTER;
+    } else if (!strcasecmp(argv[2], "32BIT_COUNTER")) {
+        mux_val = BLADERF_RX_MUX_32BIT_COUNTER;
+    } else if (!strcasecmp(argv[2], "DIGITAL_LOOPBACK")) {
+        mux_val = BLADERF_RX_MUX_DIGITAL_LOOPBACK;
+    } else {
+        cli_err_nnl(state, "Invalid RX mux mode", "%s\n", argv[2]);
+        return CLI_RET_INVPARAM;
+    }
+
+    status = bladerf_set_rx_mux(state->dev, mux_val);
+    if (status < 0) {
+        state->last_lib_error = status;
+        status = CLI_RET_LIBBLADERF;
+    } else {
+        status = print_rx_mux(state, 2, argv);
+    }
+
+    return status;
+}
+
 int print_rxvga1(struct cli_state *state, int argc, char **argv)
 {
     int rv = CLI_RET_OK, gain, status;
@@ -1419,6 +1489,79 @@ int set_trimdac(struct cli_state *state, int argc, char **argv)
         }
     }
     return rv;
+}
+
+int set_vctcxo_tamer(struct cli_state *state, int argc, char **argv)
+{
+    int status;
+
+    bladerf_vctcxo_tamer_mode mode = BLADERF_VCTCXO_TAMER_INVALID;
+
+    if (argc != 3) {
+        return CLI_RET_NARGS;
+    }
+
+    if (!strcasecmp(argv[2], "disabled")      || !strcasecmp(argv[2], "off")) {
+        mode = BLADERF_VCTCXO_TAMER_DISABLED;
+    } else if (!strcasecmp(argv[2], "1PPS")  || !strcasecmp(argv[2], "1 PPS")) {
+        mode = BLADERF_VCTCXO_TAMER_1_PPS;
+    } else if (!strcasecmp(argv[2], "10MHZ") || !strcasecmp(argv[2], "10 MHZ")) {
+        mode = BLADERF_VCTCXO_TAMER_10_MHZ;
+    } else if (!strcasecmp(argv[2], "10M")) {
+        mode = BLADERF_VCTCXO_TAMER_10_MHZ;
+    } else {
+        cli_err_nnl(state, "Invalid VCTCXO tamer option", "%s\n", argv[2]);
+        return CLI_RET_INVPARAM;
+    }
+
+    status = bladerf_set_vctcxo_tamer_mode(state->dev, mode);
+    if (status != 0) {
+        state->last_lib_error = status;
+        status = CLI_RET_LIBBLADERF;
+    } else {
+        status = print_vctcxo_tamer(state, 2, argv);
+    }
+
+    return status;
+}
+
+int print_vctcxo_tamer(struct cli_state *state, int argc, char *argv[])
+{
+    int status;
+    const char *mode_str;
+
+    bladerf_vctcxo_tamer_mode mode = BLADERF_VCTCXO_TAMER_INVALID;
+
+    if (argc != 2) {
+        return CLI_RET_NARGS;
+    }
+
+    status = bladerf_get_vctcxo_tamer_mode(state->dev, &mode);
+    if (status != 0) {
+        state->last_lib_error = status;
+        return CLI_RET_LIBBLADERF;
+    }
+
+    switch (mode) {
+        case BLADERF_VCTCXO_TAMER_DISABLED:
+            mode_str = "Disabled";
+            break;
+
+        case BLADERF_VCTCXO_TAMER_1_PPS:
+            mode_str = "1 PPS";
+            break;
+
+        case BLADERF_VCTCXO_TAMER_10_MHZ:
+            mode_str = "10 MHz";
+            break;
+
+        default:
+            mode_str = "Unknown";
+            break;
+    }
+
+    printf("  VCTCXO tamer mode: %s\n", mode_str);
+    return CLI_RET_OK;
 }
 
 int print_xb_spi(struct cli_state *state, int argc, char **argv)

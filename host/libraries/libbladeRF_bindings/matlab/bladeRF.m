@@ -271,7 +271,9 @@ classdef bladeRF < handle
             delete 'delete_this_file.m'
 
             if isempty(notfound) == false
-                error('Failed to find functions in libbladeRF.');
+                fprintf('\nMissing functions:\n');
+                disp(notfound.');
+                error('Failed to find the above functions in libbladeRF.');
             end
 
             if isempty(warnings) == false
@@ -628,7 +630,7 @@ classdef bladeRF < handle
         % timestamp, the stream will be "padded" with 0+0j up to that
         % timestamp.
         %
-        % bladeRF.transmit(samples, 3000, 0, 1, 1) immediately transmits
+        % bladeRF.transmit(samples, 3000, 0, true, true) immediately transmits
         % a single burst of samples with a 3s timeout. The use of the
         % sob and eob flags ensures the end of the burst will be
         % zero padded by libbladeRF in order to hold the TX DAC at
@@ -649,16 +651,17 @@ classdef bladeRF < handle
         %   timestamp   Timestamp counter value at which to transmit samples.
         %               0 implies "now."
         %
-        %   sob         "Start of burst" flag. Should be `true` or `false`.
-        %               This informs libbladeRF to consider all provided
-        %               samples to be within a burst until an eob flags
-        %               is provided. This value should be `true` or `false`.
+        %   sob         "Start of burst" flag.  This informs libbladeRF to
+        %               consider all provided samples to be within a burst
+        %               until an eob flags is provided. This value should be
+        %               `true` or `false`.
         %
         %   eob         "End of burst" flag. This informs libbladeRF
         %               that after the provided samples, the burst
         %               should be ended. libbladeRF will zero-pad
         %               the remainder of a buffer to ensure that
-        %               TX DAC is held at 0+0j after a burst. This
+        %               TX DAC is held at 0+0j after a burst. This value
+        %               should be `true` or `false`
         %
         % For more information about utilizing timestamps and bursts, see the
         % "TX with metadata" topic in the libbladeRF API documentation:
@@ -848,6 +851,82 @@ classdef bladeRF < handle
 
             bladeRF.check_status('bladerf_set_loopback', status);
             mode = strrep(mode, 'BLADERF_LB_', '');
+        end
+
+        function calibrate(obj, module)
+        % Perform the specified calibration.
+        %
+        % RX and TX should not be running when this is done.
+        %
+        % bladeRF/calibrate(module)
+        %
+        % Where `module` is one of:
+        %   - 'LPF_TUNING'  - Calibrate the DC offset of the LPF Tuning module
+        %   - 'RX_LPF'      - Calibrate the DC offset of the RX LPF
+        %   - 'TX_LPF'      - Calibrate the DC offset of the TX LPF
+        %   - 'RXVGA2'      - Calibrate the DC offset of RX VGA2
+        %   - 'ALL'         - Perform all of the above
+        %
+            if obj.rx.running ==  true || obj.tx.running == true
+                error('Calibration cannot be performed while the device is streaming.')
+            end
+
+            if nargin < 2
+                module = 'ALL';
+            else
+                module = strcat('BLADERF_DC_CAL_', upper(module));
+            end
+
+            switch module
+                case { 'BLADERF_DC_CAL_LPF_TUNING', ...
+                       'BLADERF_DC_CAL_RX_LPF',     ...
+                       'BLADERF_DC_CAL_RXVGA2',     ...
+                       'BLADERF_DC_CAL_TX_LPF' }
+
+                   perform_calibration(obj, module);
+
+                case { 'BLADERF_DC_CAL_ALL' }
+
+                    perform_calibration(obj, 'BLADERF_DC_CAL_LPF_TUNING');
+                    perform_calibration(obj, 'BLADERF_DC_CAL_RX_LPF');
+                    perform_calibration(obj, 'BLADERF_DC_CAL_RXVGA2');
+                    perform_calibration(obj, 'BLADERF_DC_CAL_TX_LPF');
+
+                otherwise
+                    error(['Invalid module specified: ' module])
+            end
+
+        end
+    end
+
+    methods(Access = private)
+
+        function perform_calibration(obj, cal)
+            if strcmpi(cal, 'BLADERF_DC_CAL_TX_LPF') == true
+                samplerate_backup  = obj.tx.samplerate;
+                config_backup      = obj.tx.config;
+                loopback_backup    = obj.loopback;
+
+                obj.loopback = 'BB_TXVGA1_RXVGA2';
+
+                obj.tx.config.num_buffers   = 16;
+                obj.tx.config.num_transfers = 8;
+                obj.tx.config.buffer_size   = 8192;
+                obj.tx.samplerate           = 3e6;
+
+                dummy_samples = zeros(obj.tx.config.buffer_size * obj.tx.config.num_buffers, 1);
+                obj.tx.start();
+                obj.transmit(dummy_samples);
+                obj.tx.stop();
+
+                obj.tx.config = config_backup;
+                obj.tx.samplerate = samplerate_backup;
+
+                obj.loopback = loopback_backup;
+            end
+
+            status = calllib('libbladeRF', 'bladerf_calibrate_dc', obj.device, cal);
+            bladeRF.check_status('bladerf_calibrate_dc', status);
         end
     end
 end

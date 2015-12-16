@@ -30,6 +30,16 @@
 #include "debug.h"
 #include "fpga_version.h"
 
+/* Define a global variable containing the current VCTCXO DAC setting.
+ * This is a 'cached' value of what is written to the DAC and is used
+ * by the VCTCXO calibration algorithm to avoid constant read requests
+ * going out to the DAC. Initial power-up state of the DAC is mid-scale.
+ */
+uint16_t vctcxo_trim_dac_value = 0x7FFF;
+
+/* Define a cached version of the VCTCXO tamer control register */
+uint8_t vctcxo_tamer_ctrl_reg = 0x00;
+
 static void command_uart_enable_isr(bool enable) {
     uint32_t val = enable ? 1 : 0 ;
     IOWR_32DIRECT(COMMAND_UART_BASE, 16, val) ;
@@ -46,6 +56,143 @@ static void command_uart_isr(void *context) {
     pkt->ready = true ;
 
     return ;
+}
+
+static void vctcxo_tamer_isr(void *context) {
+    struct vctcxo_tamer_pkt_buf *pkt = (struct vctcxo_tamer_pkt_buf *)context;
+    uint8_t error_status = 0x00;
+
+    /* Disable interrupts */
+    vctcxo_tamer_enable_isr( false );
+
+    /* Reset (stop) the counters */
+    vctcxo_tamer_reset_counters( true );
+
+    /* Read the current count values */
+    pkt->pps_1s_error   = vctcxo_tamer_read_count(VT_ERR_1S_ADDR);
+    pkt->pps_10s_error  = vctcxo_tamer_read_count(VT_ERR_10S_ADDR);
+    pkt->pps_100s_error = vctcxo_tamer_read_count(VT_ERR_100S_ADDR);
+
+    /* Read the error status register */
+    error_status = vctcxo_tamer_read(VT_STAT_ADDR);
+
+    /* Set the appropriate flags in the packet buffer */
+    pkt->pps_1s_error_flag   = (error_status & VT_STAT_ERR_1S)   ? true : false;
+    pkt->pps_10s_error_flag  = (error_status & VT_STAT_ERR_10S)  ? true : false;
+    pkt->pps_100s_error_flag = (error_status & VT_STAT_ERR_100S) ? true : false;
+
+    /* Clear interrupt */
+    vctcxo_tamer_clear_isr();
+
+    /* Tell the main loop that there is a request pending */
+    pkt->ready = true;
+
+    return;
+}
+
+void vctcxo_tamer_enable_isr(bool enable) {
+    if( enable ) {
+        vctcxo_tamer_ctrl_reg |= VT_CTRL_IRQ_EN;
+    } else {
+        vctcxo_tamer_ctrl_reg &= ~VT_CTRL_IRQ_EN;
+    }
+
+    vctcxo_tamer_write(VT_CTRL_ADDR, vctcxo_tamer_ctrl_reg);
+    return;
+}
+
+void vctcxo_tamer_clear_isr() {
+    vctcxo_tamer_write(VT_CTRL_ADDR, vctcxo_tamer_ctrl_reg | VT_CTRL_IRQ_CLR);
+    return;
+}
+
+void vctcxo_tamer_reset_counters(bool reset) {
+    if( reset ) {
+        vctcxo_tamer_ctrl_reg |= VT_CTRL_RESET;
+    } else {
+        vctcxo_tamer_ctrl_reg &= ~VT_CTRL_RESET;
+    }
+
+    vctcxo_tamer_write(VT_CTRL_ADDR, vctcxo_tamer_ctrl_reg);
+    return;
+}
+
+void vctcxo_tamer_set_tune_mode(bladerf_vctcxo_tamer_mode mode) {
+
+    switch (mode) {
+        case BLADERF_VCTCXO_TAMER_DISABLED:
+        case BLADERF_VCTCXO_TAMER_1_PPS:
+        case BLADERF_VCTCXO_TAMER_10_MHZ:
+            vctcxo_tamer_enable_isr(false);
+            break;
+
+        default:
+            /* Erroneous value */
+            return;
+    }
+
+    /* Set tuning mode */
+    vctcxo_tamer_ctrl_reg &= ~VT_CTRL_TUNE_MODE;
+    vctcxo_tamer_ctrl_reg |= (((uint8_t) mode) << 6);
+    vctcxo_tamer_write(VT_CTRL_ADDR, vctcxo_tamer_ctrl_reg);
+
+    /* Reset the counters */
+    vctcxo_tamer_reset_counters( true );
+
+    /* Take counters out of reset if tuning mode is not DISABLED */
+    if( mode != 0x00 ) {
+        vctcxo_tamer_reset_counters( false );
+    }
+
+    switch (mode) {
+        case BLADERF_VCTCXO_TAMER_1_PPS:
+        case BLADERF_VCTCXO_TAMER_10_MHZ:
+            vctcxo_tamer_enable_isr(true);
+            break;
+
+        default:
+            /* Leave ISR disabled otherwise */
+            break;
+    }
+
+    return;
+}
+
+bladerf_vctcxo_tamer_mode vctcxo_tamer_get_tune_mode()
+{
+    uint8_t tmp = vctcxo_tamer_read(VT_CTRL_ADDR);
+    tmp = (tmp & VT_CTRL_TUNE_MODE) >> 6;
+
+    switch (tmp) {
+        case BLADERF_VCTCXO_TAMER_DISABLED:
+        case BLADERF_VCTCXO_TAMER_1_PPS:
+        case BLADERF_VCTCXO_TAMER_10_MHZ:
+            return (bladerf_vctcxo_tamer_mode) tmp;
+
+        default:
+            return BLADERF_VCTCXO_TAMER_INVALID;
+    }
+}
+
+int32_t vctcxo_tamer_read_count(uint8_t addr) {
+    uint32_t base = VCTCXO_TAMER_0_BASE;
+    uint8_t offset = addr;
+    int32_t value = 0;
+
+    value  = IORD_8DIRECT(base, offset++);
+    value |= ((int32_t) IORD_8DIRECT(base, offset++)) << 8;
+    value |= ((int32_t) IORD_8DIRECT(base, offset++)) << 16;
+    value |= ((int32_t) IORD_8DIRECT(base, offset++)) << 24;
+
+    return value;
+}
+
+uint8_t vctcxo_tamer_read(uint8_t addr) {
+    return (uint8_t)IORD_8DIRECT(VCTCXO_TAMER_0_BASE, addr);
+}
+
+void vctcxo_tamer_write(uint8_t addr, uint8_t data) {
+    IOWR_8DIRECT(VCTCXO_TAMER_0_BASE, addr, data);
 }
 
 void tamer_schedule(bladerf_module m, uint64_t time) {
@@ -67,7 +214,7 @@ void tamer_schedule(bladerf_module m, uint64_t time) {
     return ;
 }
 
-void bladerf_nios_init(struct pkt_buf *pkt) {
+void bladerf_nios_init(struct pkt_buf *pkt, struct vctcxo_tamer_pkt_buf *vctcxo_tamer_pkt) {
     /* Set the prescaler for 400kHz with an 80MHz clock:
      *      (prescaler = clock / (5*desired) - 1)
      */
@@ -87,9 +234,22 @@ void bladerf_nios_init(struct pkt_buf *pkt) {
         NULL
     ) ;
 
+    /* Register the VCTCXO Tamer ISR */
+    alt_ic_isr_register(
+        VCTCXO_TAMER_0_IRQ_INTERRUPT_CONTROLLER_ID,
+        VCTCXO_TAMER_0_IRQ,
+        vctcxo_tamer_isr,
+        vctcxo_tamer_pkt,
+        NULL
+    );
+
+    /* Default VCTCXO Tamer and its interrupts to be disabled. */
+    vctcxo_tamer_set_tune_mode(BLADERF_VCTCXO_TAMER_DISABLED);
+
     /* Enable interrupts */
     command_uart_enable_isr(true) ;
     alt_ic_irq_enable(COMMAND_UART_IRQ_INTERRUPT_CONTROLLER_ID, COMMAND_UART_IRQ);
+    alt_ic_irq_enable(VCTCXO_TAMER_0_IRQ_INTERRUPT_CONTROLLER_ID, VCTCXO_TAMER_0_IRQ);
 }
 
 static void si5338_complete_transfer(uint8_t check_rxack)
@@ -165,6 +325,9 @@ void vctcxo_trim_dac_write(uint8_t cmd, uint16_t val)
         (val >> 8) & 0xff,
         val & 0xff,
     };
+
+    /* Update cached value of trim DAC setting */
+    vctcxo_trim_dac_value = val;
 
     alt_avalon_spi_command(PERIPHERAL_SPI_BASE, 0, 3, data, 0, 0, 0) ;
 }

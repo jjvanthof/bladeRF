@@ -67,7 +67,9 @@ architecture hosted_bladerf of bladerf is
         tx_tamer_ts_pps                 :   in  std_logic ;
         tx_tamer_ts_clock               :   in  std_logic ;
         tx_tamer_ts_reset               :   in  std_logic;
-        tx_tamer_ts_time                :   out std_logic_vector(63 downto 0)
+        tx_tamer_ts_time                :   out std_logic_vector(63 downto 0);
+        vctcxo_tamer_tune_ref           :   in  std_logic;
+        vctcxo_tamer_vctcxo_clock       :   in  std_logic
       );
     end component;
 
@@ -75,6 +77,7 @@ architecture hosted_bladerf of bladerf is
     alias tx_clock  is c4_tx_clock ;
     alias rx_clock  is lms_rx_clock_out ;
 
+    -- Can be set from libbladeRF using bladerf_set_rx_mux()
     type rx_mux_mode_t is (RX_MUX_NORMAL, RX_MUX_12BIT_COUNTER, RX_MUX_32BIT_COUNTER, RX_MUX_ENTROPY, RX_MUX_DIGITAL_LOOPBACK) ;
 
     signal rx_mux_sel       : unsigned(2 downto 0) ;
@@ -120,6 +123,7 @@ architecture hosted_bladerf of bladerf is
 
     signal rx_sample_fifo   : fifo_t ;
     signal tx_sample_fifo   : fifo_t ;
+    signal rx_loopback_fifo : fifo_t ;
 
     type meta_fifo_tx_t is record
         aclr    :   std_logic ;
@@ -195,6 +199,11 @@ architecture hosted_bladerf of bladerf is
     signal rx_entropy_i     : signed(15 downto 0) := (others =>'0') ;
     signal rx_entropy_q     : signed(15 downto 0) := (others =>'0') ;
     signal rx_entropy_valid : std_logic := '0' ;
+
+    signal rx_loopback_i     : signed(15 downto 0) := (others =>'0') ;
+    signal rx_loopback_q     : signed(15 downto 0) := (others =>'0') ;
+    signal rx_loopback_valid : std_logic := '0' ;
+    signal rx_loopback_enabled : std_logic := '0' ;
 
     signal tx_sample_raw_i : signed(15 downto 0);
     signal tx_sample_raw_q : signed(15 downto 0);
@@ -492,6 +501,51 @@ begin
         wrusedw             => rx_meta_fifo.wused
       );
 
+
+    -- RX loopback fifo
+    rx_loopback_fifo.aclr <= '1' when rx_reset = '1' or tx_reset = '1' or rx_loopback_enabled = '0' else '0' ;
+    rx_loopback_fifo.wclock <= tx_clock ;
+    rx_loopback_fifo.wdata <= std_logic_vector(tx_sample_i & tx_sample_q) when rx_loopback_enabled = '1' else (others => '0') ;
+    rx_loopback_fifo.wreq <= tx_sample_valid when rx_loopback_enabled = '1' else '0';
+
+    rx_loopback_fifo.rclock <= rx_clock ;
+    rx_loopback_fifo.rreq <= '1' when rx_loopback_enabled = '1' and rx_loopback_fifo.rempty = '0' else '0' ;
+
+    U_rx_loopack_fifo : entity work.rx_fifo
+      port map (
+        aclr                => rx_loopback_fifo.aclr,
+        data                => rx_loopback_fifo.wdata,
+        rdclk               => rx_loopback_fifo.rclock,
+        rdreq               => rx_loopback_fifo.rreq,
+        wrclk               => rx_loopback_fifo.wclock,
+        wrreq               => rx_loopback_fifo.wreq,
+        q                   => rx_loopback_fifo.rdata,
+        rdempty             => rx_loopback_fifo.rempty,
+        rdfull              => rx_loopback_fifo.rfull,
+        rdusedw             => rx_loopback_fifo.rused,
+        wrempty             => rx_loopback_fifo.wempty,
+        wrfull              => rx_loopback_fifo.wfull,
+        wrusedw             => rx_loopback_fifo.wused
+      );
+
+      rx_loopback_enabled <= '1' when rx_enable = '1' and tx_enable = '1' and rx_mux_mode = RX_MUX_DIGITAL_LOOPBACK else '0' ;
+      rx_loopback_i <= resize(signed(rx_loopback_fifo.rdata(31 downto 16)), rx_loopback_i'length) ;
+      rx_loopback_q <= resize(signed(rx_loopback_fifo.rdata(15 downto 0)), rx_loopback_q'length) ;
+
+      loopback_valid : process(rx_reset, rx_clock)
+      begin
+        if (rx_reset = '1') then
+            rx_loopback_valid <= '0';
+        elsif rising_edge(rx_clock) then
+             if (rx_loopback_fifo.rempty = '0') then
+                -- Delay fifo read request by one clock to indicate sample validity
+                rx_loopback_valid <= rx_loopback_fifo.rreq ;
+            else
+                rx_loopback_valid <= '0' ;
+            end if;
+        end if;
+    end process loopback_valid;
+
     -- FX3 GPIF
     U_fx3_gpif : entity work.fx3_gpif
       port map (
@@ -714,9 +768,9 @@ begin
                     rx_mux_q <= rx_entropy_q ;
                     rx_mux_valid <= rx_entropy_valid ;
                 when RX_MUX_DIGITAL_LOOPBACK =>
-                    rx_mux_i <= tx_sample_raw_i ;
-                    rx_mux_q <= tx_sample_raw_q ;
-                    rx_mux_valid <= tx_sample_raw_valid ;
+                    rx_mux_i <= rx_loopback_i ;
+                    rx_mux_q <= rx_loopback_q ;
+                    rx_mux_valid <= rx_loopback_valid ;
                 when others =>
                     rx_mux_i <= (others =>'0') ;
                     rx_mux_q <= (others =>'0') ;
@@ -793,7 +847,9 @@ begin
         tx_tamer_ts_pps                 => '0',
         tx_tamer_ts_clock               => tx_clock,
         tx_tamer_ts_reset               => tx_ts_reset,
-        unsigned(tx_tamer_ts_time)      => tx_timestamp
+        unsigned(tx_tamer_ts_time)      => tx_timestamp,
+        vctcxo_tamer_tune_ref           => ref_vctcxo_tune,
+        vctcxo_tamer_vctcxo_clock       => c4_clock
       ) ;
 
     xb_gpio_direction : process(all)
