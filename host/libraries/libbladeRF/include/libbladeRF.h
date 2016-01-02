@@ -25,6 +25,33 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * @ingroup FN_MISC
+ *
+ * libbladeRF API version
+ *
+ * As of libbladeRF v1.5.0, this macro is defined to assist with feature
+ * detection. Generally, this will be used as follows:
+ *
+ * @code
+ * #if defined(LIBBLADERF_API_VERSION) && (LIBBLADERF_API_VERSION >= 0x01050000)
+ *      // ...  Use features added in libbladeRF v1.5.0 ...
+ * #endif
+ * @endcode
+ *
+ * This value is defined as follows:
+ *      `(major << 24) | (minor << 16) | (patch << 8) | (reserved << 0)`
+ *
+ * The reserved field may be used at a later date to denote additions between
+ * releases. It will be set to zero when not used.
+ *
+ * This value is intended to track the values returned by bladerf_version().
+ * Fields are updated per the scheme defined here:
+ *
+ *  https://github.com/Nuand/bladeRF/blob/master/doc/development/versioning.md
+ */
+#define LIBBLADERF_API_VERSION (0x01050000)
+
 #ifdef __cplusplus
 extern "C" {
 #else
@@ -632,8 +659,9 @@ typedef enum {
  */
 typedef enum
 {
-    BLADERF_MODULE_RX,  /**< Receive Module */
-    BLADERF_MODULE_TX   /**< Transmit Module */
+    BLADERF_MODULE_INVALID = -1,    /**< Invalid module entry */
+    BLADERF_MODULE_RX,              /**< Receive Module */
+    BLADERF_MODULE_TX               /**< Transmit Module */
 } bladerf_module;
 
 /**
@@ -724,6 +752,7 @@ struct bladerf_quick_tune {
  * DC Calibration Modules
  */
 typedef enum {
+    BLADERF_DC_CAL_INVALID = -1,
     BLADERF_DC_CAL_LPF_TUNING,
     BLADERF_DC_CAL_TX_LPF,
     BLADERF_DC_CAL_RX_LPF,
@@ -771,8 +800,13 @@ typedef enum {
  * VCTCXO Tamer mode selection
  *
  * These values control the use of header J71 pin 1 for taming the
- * on-board VCTCXO. When supplying input ito the VCTCXO tamer, a 1.8V signal
+ * on-board VCTCXO. When supplying input into the VCTCXO tamer, a 1.8V signal
  * must be provided.
+ *
+ * <b>
+ * IMPORTANT: Exceeding 1.8V on J71-1 can damage the associated FPGA I/O bank.
+ * Ensure that you provide only a 1.8V signal!
+ * </b>
  */
 typedef enum {
     /** Denotes an invalid selection or state */
@@ -1276,6 +1310,9 @@ int CALL_CONV bladerf_get_lpf_mode(struct bladerf *dev, bladerf_module module,
 /**
  * Select the appropriate band path given a frequency in Hz.
  *
+ * Most API users will not need to use this function, as bladerf_set_frequency()
+ * calls this internally after tuning the device.
+ *
  * The high band (LNA2 and PA2) is used for `frequency` >= 1.5 GHz. Otherwise,
  * The low band (LNA1 and PA1) is used.
  *
@@ -1299,6 +1336,10 @@ int CALL_CONV bladerf_select_band(struct bladerf *dev, bladerf_module module,
  * Values outside the range of
  * [ \ref BLADERF_FREQUENCY_MIN, \ref BLADERF_FREQUENCY_MAX ]
  * will be clamped.
+ *
+ * For best results, it is recommended to keep the RX and TX frequencies at
+ * least 1 MHz apart, and to digitally mix on the RX side if reception closer
+ * to the TX frequency is required.
  *
  * This calls bladerf_select_band() internally.
  *
@@ -2422,7 +2463,10 @@ API_EXPORT
 int CALL_CONV bladerf_device_reset(struct bladerf *dev);
 
 /**
- * Jump to FX3 bootloader
+ * Clear out a firmware signature word in flash and jump to FX3 bootloader.
+ *
+ * The device will continue to boot into the FX3 bootloader across power cycles
+ * until new firmware is written to the device.
  *
  * @param   dev         Device handle
  *
@@ -2480,6 +2524,18 @@ void CALL_CONV bladerf_version(struct bladerf_version *version);
  */
 API_EXPORT
 void CALL_CONV bladerf_log_set_verbosity(bladerf_log_level level);
+
+/**
+ * Read firmware log data and write it to the specified file
+ *
+ * @param   dev         Device to read firmware log from
+ * @param   filename    Filename to write log information to. If set to NULL,
+ *                      log data will be printed to stdout.
+ *
+ * @return 0 upon success, or a value from \ref RETCODES list on failure
+ */
+API_EXPORT
+int CALL_CONV bladerf_get_fw_log(struct bladerf *dev, const char *filename);
 
 /** @} (End of FN_MISC) */
 

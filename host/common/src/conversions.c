@@ -140,11 +140,24 @@ double str2double(const char *str, double min, double max, bool *ok)
     return value;
 }
 
-/* Workaround for MSVC 2012 support */
-#if _MSC_VER
+/* MSVC workarounds */
+
+#if _MSC_VER   
+    /* This appears to be missing <= 2012 */
 #   ifndef INFINITY
-#   define INFINITY (_HUGE * _HUGE)
-#endif
+#       define INFINITY (_HUGE * _HUGE)
+#   endif
+
+   /* As of MSVC 2013, INFINITY appears to be available, but
+    * the compiler emits a warning for every usage, despite it
+    * causing an overflow by design.
+    *  https://msdn.microsoft.com/en-us/library/cwt7tyxx.aspx
+    *
+    * Oddly, we see warning 4056, despite math.h noting that 4756
+    * will be induced (with the same description).
+    */
+#   pragma warning (push)
+#   pragma warning (disable:4056)
 #endif
 
 double str2dbl_suffix(const char *str,
@@ -202,7 +215,9 @@ double str2dbl_suffix(const char *str,
 
     return value;
 }
-
+#if _MSC_VER
+#   pragma warning(pop)
+#endif
 
 unsigned int str2uint_suffix(const char *str,
                              unsigned int min, unsigned int max,
@@ -361,6 +376,17 @@ const char * module2str(bladerf_module m)
             return "TX";
         default:
             return "Unknown";
+    }
+}
+
+bladerf_module str2module(const char *str)
+{
+    if (!strcasecmp(str, "RX")) {
+        return BLADERF_MODULE_RX;
+    } else if (!strcasecmp(str, "TX")) {
+        return BLADERF_MODULE_TX;
+    } else {
+        return BLADERF_MODULE_INVALID;
     }
 }
 
@@ -606,4 +632,22 @@ void float_to_sc16q11(const float *in, int16_t *out, unsigned int n)
         out[i]   = (int16_t) (in[i]   * 2048.0f);
         out[i+1] = (int16_t) (in[i+1] * 2048.0f);
     }
+}
+
+bladerf_cal_module str_to_bladerf_cal_module(const char *str)
+{
+    bladerf_cal_module module = BLADERF_DC_CAL_INVALID;
+
+    if (!strcasecmp(str, "lpf_tuning") || !strcasecmp(str, "lpftuning") ||
+        !strcasecmp(str, "tuning")) {
+        module = BLADERF_DC_CAL_LPF_TUNING;
+    } else if (!strcasecmp(str, "tx_lpf")  || !strcasecmp(str, "txlpf")) {
+        module = BLADERF_DC_CAL_TX_LPF;
+    } else if (!strcasecmp(str, "rx_lpf")  || !strcasecmp(str, "rxlpf")) {
+        module = BLADERF_DC_CAL_RX_LPF;
+    } else if (!strcasecmp(str, "rx_vga2") || !strcasecmp(str, "rxvga2")) {
+        module = BLADERF_DC_CAL_RXVGA2;
+    }
+
+    return module;
 }
