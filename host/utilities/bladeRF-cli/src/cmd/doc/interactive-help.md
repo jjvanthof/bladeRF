@@ -28,7 +28,7 @@ Available operations:
  * RX and TX I/Q DC offset correction parameter calibration
 
      * `calibrate dc <rx|tx> [<I> <Q>]`
-     * `calibrate dc <rxtx> dc`
+     * `calibrate dc <rxtx>`
 
     Calibrate the DC offset correction parameters for the current frequency
     and gain settings. If a I/Q values are provided, they are applied
@@ -213,6 +213,16 @@ metadata.
     Defaults to length of the data in the provided image file.
 
 
+fw_log
+------
+
+Usage: `fw_log` [filename]
+
+Read the contents of the device's firmware log and write it to the
+specified file. If no filename is specified, the log content is written
+to stdout.
+
+
 help
 ----
 
@@ -242,7 +252,10 @@ jump_to_boot
 
 Usage: `jump_to_boot`
 
-Jumps to the FX3 bootloader.
+Clear out a FW signature word in flash and jump to FX3 bootloader.
+
+The device will continue to boot into the FX3 bootloader across power cycles
+until new firmware is written to the device.
 
 
 load

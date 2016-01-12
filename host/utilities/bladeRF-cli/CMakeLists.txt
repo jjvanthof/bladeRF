@@ -6,8 +6,8 @@ project(bladeRF-cli C)
 ################################################################################
 
 set(VERSION_INFO_MAJOR  1)
-set(VERSION_INFO_MINOR  2)
-set(VERSION_INFO_PATCH  1)
+set(VERSION_INFO_MINOR  3)
+set(VERSION_INFO_PATCH  0)
 
 if(NOT DEFINED VERSION_INFO_EXTRA)
     set(VERSION_INFO_EXTRA "git")
@@ -130,7 +130,6 @@ set(BLADERF_CLI_SOURCE
         src/main.c
         src/common.c
         src/cmd/calibrate.c
-        src/cmd/calibrate_dc.c
         src/cmd/doc/cmd_help.h
         src/cmd/cmd.c
         src/cmd/erase.c
@@ -138,6 +137,7 @@ set(BLADERF_CLI_SOURCE
         src/cmd/flash_image.c
         src/cmd/flash_init_cal.c
         src/cmd/flash_restore.c
+        src/cmd/fw_log.c
         src/cmd/info.c
         src/cmd/load.c
         src/cmd/open.c
@@ -160,6 +160,7 @@ set(BLADERF_CLI_SOURCE
         src/input/input.c
         src/input/script.c
         ${BLADERF_HOST_COMMON_SOURCE_DIR}/conversions.c
+        ${BLADERF_HOST_COMMON_SOURCE_DIR}/dc_calibration.c
         ${BLADERF_HOST_COMMON_SOURCE_DIR}/log.c
         ${BLADERF_HOST_COMMON_SOURCE_DIR}/str_queue.c
 )

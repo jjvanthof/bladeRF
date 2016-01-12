@@ -48,6 +48,7 @@
 #include "flash_fields.h"
 #include "backend/usb/usb.h"
 #include "fx3_fw.h"
+#include "fx3_fw_log.h"
 
 static int probe(backend_probe_target target_device,
                  struct bladerf_devinfo **devices)
@@ -1378,6 +1379,23 @@ const char * bladerf_strerror(int error)
     }
 }
 
+/* Sanity checks for version reporting mismatches */
+#ifndef LIBBLADERF_API_VERSION
+#   error LIBBLADERF_API_VERSION is missing
+#endif
+
+#if LIBBLADERF_VERSION_MAJOR != ((LIBBLADERF_API_VERSION >> 24) & 0xff)
+#   error LIBBLADERF_API_VERSION: Major version mispatch
+#endif
+
+#if LIBBLADERF_VERSION_MINOR != ((LIBBLADERF_API_VERSION >> 16) & 0xff)
+#   error LIBBLADERF_API_VERSION: Minor version mispatch
+#endif
+
+#if LIBBLADERF_VERSION_PATCH != ((LIBBLADERF_API_VERSION >> 8) & 0xff)
+#   error LIBBLADERF_API_VERSION: Patch version mispatch
+#endif
+
 void bladerf_version(struct bladerf_version *version)
 {
     version->major = LIBBLADERF_VERSION_MAJOR;
@@ -1951,5 +1969,20 @@ int bladerf_load_fw_from_bootloader(const char *device_identifier,
 
 
     fx3_fw_deinit(fw);
+    return status;
+}
+
+/*------------------------------------------------------------------------------
+ * Firmware log
+ *----------------------------------------------------------------------------*/
+
+int bladerf_get_fw_log(struct bladerf *dev, const char *filename)
+{
+    int status;
+
+    MUTEX_LOCK(&dev->ctrl_lock);
+    status = fx3_fw_log_dump(dev, filename);
+    MUTEX_UNLOCK(&dev->ctrl_lock);
+
     return status;
 }
